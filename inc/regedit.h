@@ -21,8 +21,13 @@
 
 #define IDC_TREEVIEW        301
 
-#define IDC_LISTVIEW        401
+#define IDC_SPLITTER        401
+
+#define IDC_LISTVIEW        501
 
 #define MAX_KEY_NAME        128
 #define MAX_VALUE_NAME      128
 #define MAX_DATA_LEN        1024
+
+#define CONTROL_PADDING     4
+#define SPLITTER_WIDTH      10

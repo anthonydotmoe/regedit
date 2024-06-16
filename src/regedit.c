@@ -11,16 +11,28 @@
 
 #define MAX_KEY_LENGTH 255
 
+struct WindowSize {
+	int x;
+	int y;
+	int w;
+	int h;
+};
+
 LPCTSTR		g_szClassName = L"Main window class";
 LPCTSTR		g_szTitle = L"Main window";
 HINSTANCE 	g_hInst = NULL;
 HWND 		g_hwndMain = NULL;
 HWND		g_hwndTreeView = NULL;
+HWND		g_hwndSplitter = NULL;
 HWND		g_hwndListView = NULL;
+DWORD		g_dwSplitterPos = 0;
+BOOL		g_bDragging = FALSE;
 RegKeyTree	g_regkeytree;
+HCURSOR		g_hcResize;
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT handle_create(HWND, UINT, WPARAM, LPARAM);
+void handle_resize(HWND hwnd);
 HTREEITEM AddItemToTree(HWND, LPTSTR, int);
 void DisplayErrorInMsgBox(DWORD);
 void DisplayWindowsVersionBox();
@@ -30,8 +42,11 @@ BOOL InitInstance(HINSTANCE, int);
 BOOL InitTreeViewItems(HWND hwndTV);
 HWND CreateTreeView(HWND hwndParent);
 HWND CreateListView(HWND hwndParent);
+HWND CreateSplitter(HWND hwndParent);
 BOOL InitListViewColumns(HWND hwndLV);
 VOID QueryKey(HWND, HANDLE);
+struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
+struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
 
 int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
 	//DisplayScreenSizeBox();
@@ -57,6 +72,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	static POINT ptPrev;
+	
 	switch (uMsg) {
 		case WM_NOTIFY:
 			if (((LPNMHDR)lParam)->idFrom == IDC_TREEVIEW) {
@@ -81,12 +98,65 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			break;
 		case WM_CREATE:
 			return handle_create(hwnd, uMsg, wParam, lParam);
+		case WM_SIZE:
+			handle_resize(hwnd);
+			break;
+		
+		// splitter bar
+		case WM_SETCURSOR:	//TODO: This doesn't work
+		{
+			HWND hwndChild = (HWND)wParam;
+			if (hwndChild == g_hwndSplitter) {
+				SetCursor(g_hcResize);
+				return TRUE;
+			} else {
+				return DefWindowProc(hwnd, uMsg, wParam, lParam);
+			}
+		}
+		//break;
+		case WM_LBUTTONDOWN:
+		{
+			POINTS pts = MAKEPOINTS(lParam);
+			POINT pt = { pts.x, pts.y };
+			HWND hwndChild = ChildWindowFromPoint(hwnd, pt);
+			if (hwndChild == g_hwndSplitter) {
+				g_bDragging = TRUE;
+				SetCapture(hwnd);
+				ptPrev.x = pts.x;
+				ptPrev.y = pts.y;
+			}
+		}
+		break;
+		case WM_MOUSEMOVE:
+			if(g_bDragging) {
+				POINTS pts = MAKEPOINTS(lParam);
+				POINT pt;
+				pt.x = pts.x;
+				pt.y = pts.y;
+				RECT rcClient;
+				GetClientRect(hwnd, &rcClient);
+				
+				int newSplitterPos = g_dwSplitterPos + (pt.x - ptPrev.x);
+				if (newSplitterPos > 20 && newSplitterPos < rcClient.right - 20) {
+					g_dwSplitterPos = newSplitterPos;
+					ptPrev = pt;
+					handle_resize(hwnd);
+				}
+			}
+			break;
+		case WM_LBUTTONUP:
+			if(g_bDragging) {
+				g_bDragging = FALSE;
+				ReleaseCapture();
+			}
+			break;
+
 		case WM_CLOSE:
 			DestroyWindow(hwnd);
-			return 0;
+			break;
 		case WM_DESTROY:
 			PostQuitMessage(0);
-			return 0;
+			break;
 		default:
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 
@@ -97,7 +167,16 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 LRESULT handle_create(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	RECT rcClient;
+	GetClientRect(hwnd, &rcClient);
+	
+	g_dwSplitterPos = rcClient.right / 3;
+
 	if (NULL == (g_hwndTreeView = CreateTreeView(hwnd))) {
+		return -1;
+	}
+
+	if (NULL == (g_hwndSplitter = CreateSplitter(hwnd))) {
 		return -1;
 	}
 
@@ -114,21 +193,18 @@ HWND CreateListView(HWND hwndParent) {
 
 	GetClientRect(hwndParent, &rcClient);
 
-	int lv_x, lv_y, lv_w, lv_h;
+	struct WindowSize lvs;
 
-	lv_x = rcClient.right / 3 + 4;
-	lv_y = 2;
-	lv_w = ((rcClient.right * 2) / 3) - 4;
-	lv_h = rcClient.bottom - 4;
+	lvs = GetListViewSize(g_dwSplitterPos, &rcClient);
 
 	lv = CreateWindow(
 			WC_LISTVIEW,
 			L"",
 			WS_VISIBLE | WS_CHILD | LVS_REPORT,
-			lv_x,
-			lv_y,
-			lv_w,
-			lv_h,
+			lvs.x,
+			lvs.y,
+			lvs.w,
+			lvs.h,
 			hwndParent,
 			(HMENU) IDC_LISTVIEW,
 			g_hInst,
@@ -175,28 +251,25 @@ BOOL InitListViewColumns(HWND hwndLV) {
 	return TRUE;
 }
 
+
 HWND CreateTreeView(HWND hwndParent) {
 	RECT rcClient;
 	HWND tv;
 
 	GetClientRect(hwndParent, &rcClient);
 
-	int tv_x, tv_y, tv_w, tv_h;
-
-	tv_x = 2;
-	tv_y = 2;
-	tv_w = rcClient.right / 3;
-	tv_h = rcClient.bottom - 4;
+	struct WindowSize tvs;
+	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
 
 	tv = CreateWindowEx (
 			0,
 			WC_TREEVIEW,
 			L"Tree View",
 			WS_VISIBLE | WS_CHILD | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS,
-			tv_x,
-			tv_y,
-			tv_w,
-			tv_h,
+			tvs.x,
+			tvs.y,
+			tvs.w,
+			tvs.h,
 			hwndParent,
 			(HMENU) IDC_TREEVIEW,
 			g_hInst,
@@ -212,6 +285,74 @@ HWND CreateTreeView(HWND hwndParent) {
 	}
 
 	return tv;
+}
+
+HWND CreateSplitter(HWND hwndParent) {
+	RECT rcClient;
+	HWND sb;
+	
+	GetClientRect(hwndParent, &rcClient);
+	g_dwSplitterPos = rcClient.right / 3;
+	
+	sb = CreateWindow(
+		L"STATIC",
+		NULL,
+		WS_CHILD | WS_BORDER | WS_VISIBLE | SS_LEFT,
+		g_dwSplitterPos,
+		0,
+		SPLITTER_WIDTH,
+		rcClient.bottom,
+		hwndParent,
+		(HMENU)IDC_SPLITTER,
+		g_hInst,
+		NULL
+	);
+
+	return sb;
+}
+
+struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient) {
+	struct WindowSize tvs;
+	const int pad = CONTROL_PADDING;
+	
+	tvs.x = tvs.y = pad;
+	tvs.w = dwSplitterPos - pad;
+	tvs.h = rcClient->bottom - 2 * pad;
+	
+	return tvs;
+}
+
+struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient) {
+	struct WindowSize lvs;
+	const int pad = CONTROL_PADDING;
+	
+	lvs.x = dwSplitterPos + SPLITTER_WIDTH;
+	lvs.y = pad;
+	lvs.w = rcClient->right - lvs.x - pad;
+	lvs.h = rcClient->bottom - 2 * pad;
+	
+	return lvs;
+}
+
+void handle_resize(HWND hwnd) {
+	const int pad = CONTROL_PADDING;
+	RECT rcClient;
+	GetClientRect(hwnd, &rcClient);
+	
+	struct WindowSize lvs, tvs;
+	int sb_x, sb_y, sb_w, sb_h;
+
+	sb_x = g_dwSplitterPos;
+	sb_y = pad;
+	sb_w = SPLITTER_WIDTH,
+	sb_h = rcClient.bottom - 2 * pad;
+	
+	lvs = GetListViewSize(g_dwSplitterPos, &rcClient);
+	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
+
+	MoveWindow(g_hwndTreeView, tvs.x, tvs.y, tvs.w, tvs.h, TRUE);
+	MoveWindow(g_hwndSplitter, sb_x, sb_y, sb_w, sb_h, TRUE);
+	MoveWindow(g_hwndListView, lvs.x, lvs.y, lvs.w, lvs.h, TRUE);
 }
 
 HTREEITEM AddItemToTree(HWND hwndTV, LPTSTR lpszItem, int nLevel) {
@@ -343,6 +484,8 @@ BOOL InitApplication(HINSTANCE hInstance) {
 		return FALSE;
 	}
 
+	// Load resize cursor
+	g_hcResize = LoadCursor(NULL, IDC_SIZEWE);
 	WNDCLASS wndclass;
 
 	wndclass.style = CS_HREDRAW | CS_VREDRAW;
@@ -353,7 +496,7 @@ BOOL InitApplication(HINSTANCE hInstance) {
 	wndclass.hInstance = hInstance;
 	wndclass.hCursor = NULL;
 	wndclass.hbrBackground = (HBRUSH) COLOR_BACKGROUND + 1;
-	wndclass.lpszMenuName = NULL;
+	wndclass.lpszMenuName = MAKEINTRESOURCE(IDM_MENUBAR);
 	wndclass.lpszClassName = g_szClassName;
 
 	return RegisterClass(&wndclass);
