@@ -2,7 +2,9 @@
 #define REGNODE_H
 
 #include <windows.h>
+
 #include <commctrl.h>
+
 #include "regedit.h"
 
 #define NODE_ID_START   5000;

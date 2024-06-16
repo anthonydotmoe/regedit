@@ -19,7 +19,7 @@ struct WindowSize {
 };
 
 LPCTSTR		g_szClassName = L"Main window class";
-LPCTSTR		g_szTitle = L"Main window";
+LPCTSTR		g_szTitle = L"regedit";
 HINSTANCE 	g_hInst = NULL;
 HWND 		g_hwndMain = NULL;
 HWND		g_hwndTreeView = NULL;
@@ -45,7 +45,7 @@ VOID QueryKey(HWND, HANDLE);
 struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
 
-int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
 	if(!InitApplication(hInstance)) {
 		MessageBox(0, L"RegisterClassW", L"Fail!", MB_ICONERROR);
 		return FALSE;
@@ -82,12 +82,15 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 			// for that key.
 			break;
 		case TVN_DELETEITEM:
+		{
 			// Item is being deleted, itemOld.hItem and itemOld.lParam members
 			// contain valid information about the item being deleted.
 			
 			// pnmtv->itemOld.lParam will contain state information
 			RegNode *regnode = (RegNode*)pnmtv->itemOld.lParam;
 			regnode_Destroy(regnode);
+		}
+		break;
 	}
 
 	return 0;
@@ -426,7 +429,12 @@ BOOL InitApplication(HINSTANCE hInstance) {
 	wndclass.hInstance = hInstance;
 	wndclass.hCursor = NULL;
 	wndclass.hbrBackground = (HBRUSH) COLOR_BACKGROUND + 1;
+#ifdef _WIN32_IE
+	// lpszMenuName is not supported and must be NULL
+	wndclass.lpszMenuName = NULL;
+#else
 	wndclass.lpszMenuName = MAKEINTRESOURCE(IDM_MENUBAR);
+#endif
 	wndclass.lpszClassName = g_szClassName;
 
 	return RegisterClass(&wndclass);

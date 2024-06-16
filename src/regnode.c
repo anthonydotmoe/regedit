@@ -1,5 +1,3 @@
-#include <windows.h>
-#include <CommCtrl.h>
 #include "regnode.h"
 
 static int g_next_id = NODE_ID_START;
@@ -8,7 +6,9 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
     RegNode *newNode = (RegNode*)malloc(sizeof(RegNode));
     newNode->id = g_next_id++;
     newNode->hkey = hKey;
-    wcsncpy_s(newNode->keyName, MAX_KEY_NAME, keyName, _TRUNCATE);
+    //wcsncpy_s(newNode->keyName, MAX_KEY_NAME, keyName, _TRUNCATE);
+    //StringCchCopy(newNode->keyName, MAX_KEY_NAME, keyName);
+    wcsncpy(newNode->keyName, keyName, MAX_KEY_NAME);
     
     // Add to TreeView
     TVINSERTSTRUCT tvis = {0};
