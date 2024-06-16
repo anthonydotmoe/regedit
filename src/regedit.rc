@@ -1,0 +1,36 @@
+#include <windows.h>
+#include "regedit.h"
+
+IDM_MENUBAR MENU
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+{
+  POPUP "&File"
+  {
+    MENUITEM "E&xit",           IDM_FILEXIT
+  }
+  POPUP "&Edit"
+  {
+    MENUITEM "Add &Key...",     IDM_EDADDKEY
+    MENUITEM "Add &Value...",   IDM_EDADDVAL
+    MENUITEM "&Delete\tDel",    IDM_EDDELETE
+  }
+}
+
+STRINGTABLE
+{
+    IDS_NAME            "Registry Editor"
+
+    IDS_CANTOPENKEY     "Error: unable to open key. Probably due to security reasons."
+    IDS_OPENKEYERR      "Error: unable to open key. RegOpenKey = %d, Line = %d"
+    IDS_REGERR          "Line: %d 0 based index = %d, retValue = %d, ValueLen = %d"
+
+    IDS_REGBIN          "REG_BINARY: Freeform binary data."
+    IDS_REGDWORD        "REG_DWORD: A 32-bit number"
+    IDS_REGEXPSZ        "REG_EXPAND_SZ: A null-terminated string that contains unexpanded references to environment variables."
+    IDS_REGLINK         "REG_LINK: A Unicode symbolic link."
+    IDS_REGMULTI        "REG_MULTI_SZ: An array of null-terminated strings."
+    IDS_REGNONE         "REG_NONE: No defined value type."
+    IDS_REGRESLST       "REG_RESOURCE_LIST: A device-driver resource list."
+    IDS_REGSZ           "REG_SZ: A null-terminated Unicode string."
+
+}
