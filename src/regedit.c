@@ -32,7 +32,6 @@ HCURSOR		g_hcResize = NULL;
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT handle_create(HWND, UINT, WPARAM, LPARAM);
 void handle_resize(HWND hwnd);
-HTREEITEM AddItemToTree(HWND, LPTSTR, int);
 void DisplayErrorInMsgBox(DWORD);
 BOOL InitApplication(HINSTANCE);
 BOOL InitInstance(HINSTANCE, int);
@@ -41,7 +40,6 @@ HWND CreateTreeView(HWND hwndParent);
 HWND CreateListView(HWND hwndParent);
 HWND CreateSplitter(HWND hwndParent);
 BOOL InitListViewColumns(HWND hwndLV);
-VOID QueryKey(HWND, HANDLE);
 struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
 
@@ -74,7 +72,24 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 			// 1. Get the item that's expanding
 			// 1. Delete all child items under it
 			// 1. Query the node's subkeys and create a new node for each one
-			useless++;
+			
+			// The expanding node
+			RegNode *node;			
+			node = (RegNode*) pnmtv->itemNew.lParam;
+			
+			// Break out if we aren't expanding
+			if(!(pnmtv->action & TVE_EXPAND)) {
+				break;
+			}
+			
+			// Delete child items
+			HTREEITEM child;
+			while (child = TreeView_GetChild(g_hwndTreeView, node->htitem)) {
+				TreeView_DeleteItem(g_hwndTreeView, child);
+			}
+			
+			// TODO: Add subkeys
+			regnode_Create(NULL, L"RegKey", g_hwndTreeView, node->htitem);
 
 			break;
 		case TVN_SELCHANGED:
