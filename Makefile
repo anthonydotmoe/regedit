@@ -6,7 +6,7 @@ S=./src
 CC	=	arm-mingw32ce-gcc
 WINDRES	=	arm-mingw32ce-windres
 
-CFLAGS = 	-D_WIN32_IE=0x0500 -DUNICODE -D_UNICODE -Iinc -lcommctrl
+CFLAGS = 	-D_WIN32_IE=0x500 -D__CE_VERSION__=0x500 -DUNICODE -D_UNICODE -Iinc -lcommctrl
 
 build:
 	docker run --env DOCKER --rm -v"$(shell pwd)":/build ghcr.io/enlyze/windows-ce-build-environment-arm:latest /bin/sh -c 'cd /build; make all'

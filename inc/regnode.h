@@ -2,7 +2,6 @@
 #define REGNODE_H
 
 #include <windows.h>
-
 #include <commctrl.h>
 
 #include "regedit.h"

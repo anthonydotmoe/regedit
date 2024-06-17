@@ -11,6 +11,7 @@
 
 #define MAX_KEY_LENGTH 255
 
+
 struct WindowSize {
 	int x;
 	int y;
@@ -43,7 +44,12 @@ BOOL InitListViewColumns(HWND hwndLV);
 struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
 
-int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow) {
+#ifdef UNDER_CE
+#define WINMAIN WinMain
+#else
+#define WINMAIN wWinMain
+#endif
+int WINMAIN(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
 	if(!InitApplication(hInstance)) {
 		MessageBox(0, L"RegisterClassW", L"Fail!", MB_ICONERROR);
 		return FALSE;
@@ -444,7 +450,7 @@ BOOL InitApplication(HINSTANCE hInstance) {
 	wndclass.hInstance = hInstance;
 	wndclass.hCursor = NULL;
 	wndclass.hbrBackground = (HBRUSH) COLOR_BACKGROUND + 1;
-#ifdef _WIN32_IE
+#ifdef UNDER_CE
 	// lpszMenuName is not supported and must be NULL
 	wndclass.lpszMenuName = NULL;
 #else
