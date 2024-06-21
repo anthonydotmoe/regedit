@@ -1,3 +1,5 @@
+#define IDI_ICON            100
+
 #define IDS_NAME            101
 
 #define IDS_CANTOPENKEY     102
@@ -24,6 +26,18 @@
 #define IDC_SPLITTER        401
 
 #define IDC_LISTVIEW        501
+
+// String value icon
+#define IDI_REGSZ           601
+#define IMID_REGSZ          0
+
+// Data value icon
+#define IDI_REGBIN          602
+#define IMID_REGBIN         1
+
+// Key icon
+#define IDI_REGKEY          603
+#define IMID_REGKEY         2
 
 #define MAX_KEY_NAME        128
 #define MAX_VALUE_NAME      128

@@ -1,15 +1,41 @@
 #include "regnode.h"
 
+
 static int g_next_id = NODE_ID_START;
 
 RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM parent) {
     RegNode *newNode = (RegNode*)malloc(sizeof(RegNode));
     newNode->id = g_next_id++;
     newNode->hkey = hKey;
+    
     //wcsncpy_s(newNode->keyName, MAX_KEY_NAME, keyName, _TRUNCATE);
     //StringCchCopy(newNode->keyName, MAX_KEY_NAME, keyName);
     wcsncpy(newNode->keyName, keyName, MAX_KEY_NAME);
     
+    // Copy the full path of the parent key to the newNode's full path
+    if(parent == TVI_ROOT) {
+        // If it's a default key, clear the full path
+        wcsncpy(newNode->fullpath, L"", MAX_PATH);
+    }
+    else {
+        // Get TVITEM of parent
+        TVITEM tvParentItem;
+        tvParentItem.hItem = parent;        // Which item to get information from
+        tvParentItem.mask = TVIF_PARAM;     // Get the parent item's RegNode
+
+        TreeView_GetItem(hwndTV, &tvParentItem);
+
+        // Get RegNode struct
+        RegNode *regnodeParent = (RegNode*)tvParentItem.lParam;
+
+        // Copy the full path of the parent node
+        wcsncpy(newNode->fullpath, regnodeParent->fullpath, MAX_PATH);
+        // Add the path slash
+        wcsncat(newNode->fullpath, L"\\", 2);
+        // Add the name of this key
+        wcsncat(newNode->fullpath, keyName, MAX_PATH);
+    }
+
     // Add to TreeView
     TVINSERTSTRUCT tvis = {0};
     tvis.hParent = parent;

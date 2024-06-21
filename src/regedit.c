@@ -33,7 +33,7 @@ HCURSOR		g_hcResize = NULL;
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT handle_create(HWND, UINT, WPARAM, LPARAM);
 void handle_resize(HWND hwnd);
-void DisplayErrorInMsgBox(DWORD);
+void DisplayErrorInMsgBox(LPCWSTR, DWORD);
 BOOL InitApplication(HINSTANCE);
 BOOL InitInstance(HINSTANCE, int);
 BOOL InitTreeViewItems(HWND hwndTV);
@@ -43,6 +43,8 @@ HWND CreateSplitter(HWND hwndParent);
 BOOL InitListViewColumns(HWND hwndLV);
 struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
+HIMAGELIST CreateImageList();
+LPARAM handle_treeview_selection(LPNMTREEVIEW selected);
 
 #ifdef UNDER_CE
 #define WINMAIN WinMain
@@ -87,6 +89,15 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 			if(!(pnmtv->action & TVE_EXPAND)) {
 				break;
 			}
+
+			// Break out if we are the "root" node
+			HTREEITEM parent;
+			parent = TreeView_GetParent(g_hwndTreeView, node->htitem);
+
+			// parent will be NULL if it's the root
+			if(parent == NULL) {
+				break;
+			}
 			
 			// Delete child items
 			HTREEITEM child;
@@ -101,7 +112,7 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		case TVN_SELCHANGED:
 			// Key selection has changed, update the listview with the values
 			// for that key.
-			break;
+			return handle_treeview_selection(pnmtv);
 		case TVN_DELETEITEM:
 		{
 			// Item is being deleted, itemOld.hItem and itemOld.lParam members
@@ -114,6 +125,51 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 		break;
 	}
 
+	return 0;
+}
+
+LPARAM handle_treeview_selection(LPNMTREEVIEW selected) {
+	LVITEM lvi;
+	RegNode *regnodeSelected;
+
+	LPCWSTR lpszBlank		= L"";
+	LPCWSTR lpszKeyName		= L"keyName";
+	LPCWSTR lpszFullPath	= L"fullpath";
+
+	// Get the RegNode for the selected item
+	regnodeSelected = (RegNode*) selected->itemNew.lParam;
+
+	// Clear the listview
+	ListView_DeleteAllItems(g_hwndListView);
+
+	// Add Debug items
+
+	int lvidx;
+
+		// First, keyName
+	lvi.mask = LVIF_TEXT;
+	lvi.pszText = lpszKeyName;
+	lvi.iItem = 0;
+	lvi.iSubItem = 0;
+	lvidx = ListView_InsertItem(g_hwndListView, &lvi);
+
+	// Item is created, now add column text
+	ListView_SetItemText(g_hwndListView, lvidx, 0, lpszKeyName);
+	ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
+	ListView_SetItemText(g_hwndListView, lvidx, 2, regnodeSelected->keyName);
+
+		// Next, fullname
+	lvi.pszText = lpszFullPath;
+	lvi.iItem = 1;
+	lvi.iSubItem = 0;
+	lvidx = ListView_InsertItem(g_hwndListView, &lvi);
+
+	// Item is created, now add column text
+	ListView_SetItemText(g_hwndListView, lvidx, 0, lpszFullPath);
+	ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
+	ListView_SetItemText(g_hwndListView, lvidx, 2, regnodeSelected->fullpath);
+
+	// The return value is ignored
 	return 0;
 }
 
@@ -206,14 +262,17 @@ LRESULT handle_create(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	g_dwSplitterPos = rcClient.right / 3;
 
 	if (NULL == (g_hwndTreeView = CreateTreeView(hwnd))) {
+		DisplayErrorInMsgBox(L"CreateTreeView", E_FAIL);
 		return -1;
 	}
 
 	if (NULL == (g_hwndSplitter = CreateSplitter(hwnd))) {
+		DisplayErrorInMsgBox(L"CreateSplitter", E_FAIL);
 		return -1;
 	}
 
 	if (NULL == (g_hwndListView = CreateListView(hwnd))) {
+		DisplayErrorInMsgBox(L"CreateListView", E_FAIL);
 		return -1;
 	}
 
@@ -264,21 +323,21 @@ BOOL InitListViewColumns(HWND hwndLV) {
 	WCHAR lpszCol3[] = L"Data";
 
 	// Initialize the LVCOLUMN structure.
-	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT;
 	lvc.cx = 100;
 
 	// Add the columns.
-	lvc.iSubItem = iCol++;
+	//lvc.iSubItem = iCol++;
 	lvc.pszText = lpszCol1;
 	if (ListView_InsertColumn(hwndLV, 0, &lvc) == -1)
 		return FALSE;
-	lvc.iSubItem = iCol++;
+	//lvc.iSubItem = iCol++;
 	lvc.pszText = lpszCol2;
-	if (ListView_InsertColumn(hwndLV, 0, &lvc) == -1)
+	if (ListView_InsertColumn(hwndLV, 1, &lvc) == -1)
 		return FALSE;
-	lvc.iSubItem = iCol++;
+	//lvc.iSubItem = iCol++;
 	lvc.pszText = lpszCol3;
-	if (ListView_InsertColumn(hwndLV, 0, &lvc) == -1)
+	if (ListView_InsertColumn(hwndLV, 2, &lvc) == -1)
 		return FALSE;
 
 	return TRUE;
@@ -287,12 +346,22 @@ BOOL InitListViewColumns(HWND hwndLV) {
 
 HWND CreateTreeView(HWND hwndParent) {
 	RECT rcClient;
+	HIMAGELIST il;
 	HWND tv;
 
 	GetClientRect(hwndParent, &rcClient);
 
 	struct WindowSize tvs;
 	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
+
+	// Initialize the imagelist
+	il = CreateImageList();
+
+	if (il == NULL) {
+		// Fail
+		DisplayErrorInMsgBox(L"CreateImageList", E_FAIL);
+		return NULL;
+	}
 
 	tv = CreateWindowEx (
 			0,
@@ -310,14 +379,76 @@ HWND CreateTreeView(HWND hwndParent) {
 	);
 
 	if (tv == NULL) {
+		DisplayErrorInMsgBox(L"CreateTreeView::CreateWindowEx", E_FAIL);
 		return NULL;
 	}
+
+	/*
+	if(NULL == TreeView_SetImageList(tv, il, TVSIL_NORMAL)) {
+		DisplayErrorInMsgBox(L"TreeView_SetImageList", E_FAIL);
+		return NULL;
+	}
+	*/
 
 	if (!InitTreeViewItems(tv)) {
 		return NULL;
 	}
 
 	return tv;
+}
+
+HIMAGELIST CreateImageList() {
+	HIMAGELIST	il;
+
+	// Create the imagelist
+	il = ImageList_Create(
+		16, 16,			// image size
+		ILC_COLOR,		// flags
+		3,				// number of icons
+		0				// extra icon slots
+	);
+
+
+	// Load the images
+	for (int i = 0; i < 3; i++) {
+		HICON	icon;
+		int		ret;
+
+		const LPWSTR ICON_IDS[3] = {
+			MAKEINTRESOURCE(IDI_REGSZ),
+			MAKEINTRESOURCE(IDI_REGBIN),
+			MAKEINTRESOURCE(IDI_REGKEY)
+		};
+
+		// Load the bitmap from resource
+		icon = LoadImage(
+			g_hInst,				// handle to load from
+			ICON_IDS[i],			// resource name
+			IMAGE_ICON,				// image type
+			16, 16,					// cx,cyDesired
+			0						// fuLoad (set to 0)
+		);
+
+		if (icon == NULL) {
+			// Failed to load bitmap
+			DWORD error = GetLastError();
+			DisplayErrorInMsgBox(L"LoadImage", error);
+			ImageList_Destroy(il);
+			return NULL;
+		}
+		ret = ImageList_AddIcon(il, icon);
+
+		DeleteObject(icon);
+
+		if (ret == -1) {
+			DisplayErrorInMsgBox(L"ImageList_AddMasked", E_FAIL);
+			ImageList_Destroy(il);
+			return NULL;
+		}
+	}
+
+
+	return il;
 }
 
 HWND CreateSplitter(HWND hwndParent) {
@@ -405,7 +536,7 @@ BOOL InitTreeViewItems(HWND hwndTV) {
 }
 
 
-void DisplayErrorInMsgBox(DWORD dwErr) {
+void DisplayErrorInMsgBox(LPCWSTR lpszTitle, DWORD dwErr) {
 	WCHAR wszMsgBuff[512];		// Buffer for text
 	DWORD dwChars;			// Number of chars returned.
 
@@ -423,7 +554,7 @@ void DisplayErrorInMsgBox(DWORD dwErr) {
 	MessageBox(
 			0,
 			dwChars ? wszMsgBuff : L"Error message not found.",
-			L"Error",
+			lpszTitle,
 			MB_ICONERROR
 	);
 }	
