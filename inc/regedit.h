@@ -6,14 +6,35 @@
 #define IDS_OPENKEYERR      103
 #define IDS_REGERR          104
     
-#define IDS_REGBIN          105
-#define IDS_REGDWORD        106
+#define IDS_REGTYPEFIRST    105
+#define IDS_REGNONE         105
+#define IDS_REGSZ           106
 #define IDS_REGEXPSZ        107
-#define IDS_REGLINK         108
-#define IDS_REGMULTI        109
-#define IDS_REGNONE         110
-#define IDS_REGRESLST       111
-#define IDS_REGSZ           112
+#define IDS_REGBIN          108
+#define IDS_REGDWORD        109
+#define IDS_REGDWORDBE      110
+#define IDS_REGLINK         111
+#define IDS_REGMULTI        112
+#define IDS_REGRESLST       113
+
+#define IDS_REGDESCFIRST    114
+#define IDS_REGDESCNONE     114
+#define IDS_REGDESCSZ       115
+#define IDS_REGDESCEXPSZ    116
+#define IDS_REGDESCBIN      117
+#define IDS_REGDESCDWORD    118
+#define IDS_REGDESCDWORDBE  119
+#define IDS_REGDESCLINK     120
+#define IDS_REGDESCMULTI    121
+#define IDS_REGDESCRESLST   122
+
+#define IDS_BINPLACEHLDR    123
+
+#define C_COLUMNS           3       // Number of listview columns
+#define IDS_COLFIRST        150
+#define IDS_COLNAME         150
+#define IDS_COLTYPE         151
+#define IDS_COLDATA         152
 
 #define IDM_MENUBAR         201
 #define IDM_FILEXIT         202
@@ -38,6 +59,7 @@
 // Key icon
 #define IDI_REGKEY          603
 #define IMID_REGKEY         2
+
 
 #define MAX_KEY_NAME        128
 #define MAX_VALUE_NAME      128

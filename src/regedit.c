@@ -44,7 +44,8 @@ BOOL InitListViewColumns(HWND hwndLV);
 struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
 HIMAGELIST CreateImageList();
-LPARAM handle_treeview_selection(LPNMTREEVIEW selected);
+void handle_treeview_selection(LPNMTREEVIEW selected);
+void handle_treeview_expand(LPNMTREEVIEW pnmtv);
 
 #ifdef UNDER_CE
 #define WINMAIN WinMain
@@ -77,42 +78,13 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 
 	switch (pnmtv->hdr.code) {
 		case TVN_ITEMEXPANDING:
-			// 1. Get the item that's expanding
-			// 1. Delete all child items under it
-			// 1. Query the node's subkeys and create a new node for each one
-			
-			// The expanding node
-			RegNode *node;			
-			node = (RegNode*) pnmtv->itemNew.lParam;
-			
-			// Break out if we aren't expanding
-			if(!(pnmtv->action & TVE_EXPAND)) {
-				break;
-			}
-
-			// Break out if we are the "root" node
-			HTREEITEM parent;
-			parent = TreeView_GetParent(g_hwndTreeView, node->htitem);
-
-			// parent will be NULL if it's the root
-			if(parent == NULL) {
-				break;
-			}
-			
-			// Delete child items
-			HTREEITEM child;
-			while (child = TreeView_GetChild(g_hwndTreeView, node->htitem)) {
-				TreeView_DeleteItem(g_hwndTreeView, child);
-			}
-			
-			// TODO: Add subkeys
-			regnode_Create(NULL, L"RegKey", g_hwndTreeView, node->htitem);
-
+			handle_treeview_expand(pnmtv);
 			break;
 		case TVN_SELCHANGED:
 			// Key selection has changed, update the listview with the values
 			// for that key.
-			return handle_treeview_selection(pnmtv);
+			handle_treeview_selection(pnmtv);
+			break;
 		case TVN_DELETEITEM:
 		{
 			// Item is being deleted, itemOld.hItem and itemOld.lParam members
@@ -122,19 +94,84 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 			RegNode *regnode = (RegNode*)pnmtv->itemOld.lParam;
 			regnode_Destroy(regnode);
 		}
-		break;
+			break;
+		default:
+			break;
 	}
 
 	return 0;
 }
 
-LPARAM handle_treeview_selection(LPNMTREEVIEW selected) {
+void handle_treeview_expand(LPNMTREEVIEW pnmtv) {
+	// 1. Get the item that's expanding
+	// 1. Delete all child items under it
+	// 1. Query the node's subkeys and create a new node for each one
+	
+	// The expanding node
+	RegNode *node;			
+	node = (RegNode*) pnmtv->itemNew.lParam;
+	
+	// Break out if we aren't expanding
+	if(!(pnmtv->action & TVE_EXPAND)) {
+		return;
+	}
+
+	// Break out if we are the "root" node
+	HTREEITEM parent;
+	parent = TreeView_GetParent(g_hwndTreeView, node->htitem);
+
+	// parent will be NULL if it's the root
+	if(parent == NULL) {
+		return;
+	}
+		
+	// Delete child items
+	HTREEITEM child;
+	while (child = TreeView_GetChild(g_hwndTreeView, node->htitem)) {
+		TreeView_DeleteItem(g_hwndTreeView, child);
+	}
+
+	// Retrieve info on expanding key
+
+	DWORD dwcSubKeys;	// Number of subkeys in key
+	//HKEY hkeySubKey;
+
+	RegQueryInfoKey(
+		node->hkey,			// Handle to open key
+		NULL,				// LPWSTR lpClass
+		NULL,				// LPDWORD lpcbClass
+		NULL,				// LPDWORD lpReserved
+		&dwcSubKeys,		// LPDWORD lpcSubKeys
+		NULL,				// LPDWORD lpcbMaxSubKeyLen
+		NULL,				// LPDWORD lpcbMaxClassLen
+		NULL,				// LPDWORD lpcValues
+		NULL,				// LPDWORD lpcbMaxValueNameLen
+		NULL,				// LPDWORD lpcbMaxValueLen
+		NULL,				// LPDWORD lpcbSecurityDescriptor   Unused in CE
+		NULL				// PFILETIME lpftLastWriteTime		Unused in CE
+	);
+	
+	// Enumerate subkeys
+	WCHAR lpszSubKeyName[MAX_KEY_NAME];
+	DWORD dwcchName;
+	
+	while (dwcSubKeys > 0) {	
+		dwcchName = MAX_KEY_NAME;
+		RegEnumKeyEx(node->hkey, --dwcSubKeys, lpszSubKeyName, &dwcchName, NULL, NULL, NULL, NULL);
+		regnode_Create(NULL, lpszSubKeyName, g_hwndTreeView, node->htitem);
+		//dwcSubKeys--;
+	}
+
+	return;
+}
+
+void handle_treeview_selection(LPNMTREEVIEW selected) {
 	LVITEM lvi;
 	RegNode *regnodeSelected;
 
-	LPCWSTR lpszBlank		= L"";
-	LPCWSTR lpszKeyName		= L"keyName";
-	LPCWSTR lpszFullPath	= L"fullpath";
+	LPWSTR lpszBlank		= L"REG_RESOURCELIST";
+	LPWSTR lpszKeyName		= L"keyName";
+	LPWSTR lpszFullPath		= L"fullpath";
 
 	// Get the RegNode for the selected item
 	regnodeSelected = (RegNode*) selected->itemNew.lParam;
@@ -169,8 +206,7 @@ LPARAM handle_treeview_selection(LPNMTREEVIEW selected) {
 	ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
 	ListView_SetItemText(g_hwndListView, lvidx, 2, regnodeSelected->fullpath);
 
-	// The return value is ignored
-	return 0;
+	return;
 }
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -315,30 +351,32 @@ HWND CreateListView(HWND hwndParent) {
 }
 
 BOOL InitListViewColumns(HWND hwndLV) {
+	WCHAR szText[8];
 	LVCOLUMN lvc;
-	int iCol = 0;
-
-	WCHAR lpszCol1[] = L"Name";
-	WCHAR lpszCol2[] = L"Type";
-	WCHAR lpszCol3[] = L"Data";
+	int iCol;
+	int iColWidths[3] = { 200, 120, 400 };
 
 	// Initialize the LVCOLUMN structure.
-	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT;
-	lvc.cx = 100;
-
+	lvc.mask = LVCF_WIDTH | LVCF_TEXT;
+	
 	// Add the columns.
-	//lvc.iSubItem = iCol++;
-	lvc.pszText = lpszCol1;
-	if (ListView_InsertColumn(hwndLV, 0, &lvc) == -1)
-		return FALSE;
-	//lvc.iSubItem = iCol++;
-	lvc.pszText = lpszCol2;
-	if (ListView_InsertColumn(hwndLV, 1, &lvc) == -1)
-		return FALSE;
-	//lvc.iSubItem = iCol++;
-	lvc.pszText = lpszCol3;
-	if (ListView_InsertColumn(hwndLV, 2, &lvc) == -1)
-		return FALSE;
+	for (iCol = 0; iCol < C_COLUMNS; iCol++) {
+		lvc.iSubItem = iCol;
+		lvc.pszText = szText;
+		lvc.cx = iColWidths[iCol];
+		
+		// Load the names of the column headings from the string resources.
+		LoadString(
+			g_hInst,
+			IDS_COLFIRST + iCol,
+			szText,
+			sizeof(szText)/sizeof(szText[0])
+		);
+		
+		// Insert the columns into the list view.
+		if (ListView_InsertColumn(hwndLV, iCol, &lvc) == -1)
+			return FALSE;
+	}
 
 	return TRUE;
 }
