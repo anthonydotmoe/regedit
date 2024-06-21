@@ -1,6 +1,8 @@
 #include <windows.h>
 #include "regedit.h"
 
+IDI_ICON ICON "regedit.ico"
+
 IDM_MENUBAR MENU
 LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
 {
@@ -34,3 +36,7 @@ STRINGTABLE
     IDS_REGSZ           "REG_SZ: A null-terminated Unicode string."
 
 }
+
+IDI_REGSZ ICON "sz.ico"
+IDI_REGBIN ICON "bin.ico"
+IDI_REGKEY ICON "key.ico"
