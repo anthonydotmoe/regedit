@@ -1,7 +1,3 @@
-#pragma comment(lib,"User32.lib")
-#pragma comment(lib,"Advapi32.lib")
-#pragma comment(lib,"Comctl32.lib")
-
 #include <windows.h>
 #include <string.h>
 #include <mbstring.h>
