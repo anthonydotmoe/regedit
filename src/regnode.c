@@ -14,7 +14,13 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
     
     // Copy the full path of the parent key to the newNode's full path
     if(parent == TVI_ROOT) {
-        // If it's a default key, clear the full path
+        // This is the psuedo root key
+        wcsncpy(newNode->fullpath, L"", MAX_PATH);
+    }
+    else if(hKey == HKEY_CLASSES_ROOT || hKey == HKEY_CURRENT_USER || hKey == HKEY_LOCAL_MACHINE || hKey == HKEY_USERS) {
+        // This is a predefined handle
+        newNode->roothkey = hKey;
+        newNode->hkey = NULL;
         wcsncpy(newNode->fullpath, L"", MAX_PATH);
     }
     else {
@@ -27,11 +33,17 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
 
         // Get RegNode struct
         RegNode *regnodeParent = (RegNode*)tvParentItem.lParam;
+        
+        // Copy the root hkey from the parent
+        newNode->roothkey = regnodeParent->roothkey;
 
         // Copy the full path of the parent node
         wcsncpy(newNode->fullpath, regnodeParent->fullpath, MAX_PATH);
-        // Add the path slash
-        wcsncat(newNode->fullpath, L"\\", 2);
+        if (wcscmp(regnodeParent->fullpath, L"") != 0) {
+            // This is not the first child node of a predefined key
+            // Add the path slash
+            wcsncat(newNode->fullpath, L"\\", 2);
+        }
         // Add the name of this key
         wcsncat(newNode->fullpath, keyName, MAX_PATH);
     }

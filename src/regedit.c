@@ -132,6 +132,27 @@ void handle_treeview_expand(LPNMTREEVIEW pnmtv) {
 	}
 
 	// Retrieve info on expanding key
+	
+	if(node->hkey == NULL) {
+		LSTATUS ret;	
+		// Handle isn't open, so open it
+		ret = RegOpenKeyEx(
+			node->roothkey,		// Handle to predefined open key
+			node->fullpath,		// Name of the subkey to be opened
+			0,					// Options
+#ifdef UNDER_CE
+			0,					// Desired Access Rights (unused in CE)
+#else
+			KEY_READ,
+#endif
+			&(node->hkey)
+		);
+		
+		if(ret != ERROR_SUCCESS) {
+			DisplayErrorInMsgBox(L"RegOpenKeyEx", ret);
+			return;
+		}
+	}
 
 	DWORD dwcSubKeys;	// Number of subkeys in key
 	//HKEY hkeySubKey;

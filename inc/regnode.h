@@ -11,6 +11,7 @@
 typedef struct RegNode {
     int                 id;                     // Unique identifier for the node
     HKEY                hkey;                   // Handle to the registry key
+    HKEY                roothkey;               // Handle to the root key
     WCHAR               keyName[MAX_KEY_NAME];  // Name of the registry key
     WCHAR               fullpath[MAX_PATH];     // Full path to this registry key
     HTREEITEM           htitem;                 // Handle to the tree item
