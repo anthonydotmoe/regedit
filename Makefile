@@ -2,6 +2,7 @@
 
 I=./inc
 S=./src
+R=./res
 
 CC	=	arm-mingw32ce-gcc
 WINDRES	=	arm-mingw32ce-windres
@@ -16,8 +17,8 @@ all: regedit.exe
 regedit.exe: regedit.o regnode.o regedit.rsc
 	$(CC) -o $@ regedit.o regnode.o regedit.rsc $(CFLAGS)
 
-regedit.rsc: $S/regedit.rc $I/regedit.h
-	$(WINDRES) -Iinc $S/regedit.rc $@
+regedit.rsc: $R/regedit.rc $I/regedit.h
+	$(WINDRES) -Iinc $R/regedit.rc $@
 
 %.o: $S/%.c
 	$(CC) $(CFLAGS) $< -c
