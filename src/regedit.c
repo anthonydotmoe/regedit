@@ -130,7 +130,7 @@ void handle_treeview_expand(LPNMTREEVIEW pnmtv) {
 	// Retrieve info on expanding key
 	
 	if(node->hkey == NULL) {
-		LSTATUS ret;	
+		LONG ret;	
 		// Handle isn't open, so open it
 		ret = RegOpenKeyEx(
 			node->roothkey,		// Handle to predefined open key
