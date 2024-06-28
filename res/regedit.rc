@@ -46,6 +46,7 @@ STRINGTABLE
     IDS_REGDESCMULTI    "REG_MULTI_SZ: An array of null-terminated strings."
     IDS_REGDESCRESLST   "REG_RESOURCE_LIST: A device-driver resource list."
     
+    IDS_DEFAULTVALNAME  "(Default)"
     IDS_BINPLACEHLDR    "(binary)"
     
     IDS_COLNAME         "Name"

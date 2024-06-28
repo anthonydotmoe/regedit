@@ -2,11 +2,9 @@
 #include <string.h>
 #include <mbstring.h>
 #include <commctrl.h>
+#include <stdio.h>
 #include "regedit.h"
 #include "regnode.h"
-
-#define MAX_KEY_LENGTH 255
-
 
 struct WindowSize {
 	int x;
@@ -18,6 +16,7 @@ struct WindowSize {
 LPCTSTR		g_szClassName = L"Main window class";
 LPCTSTR		g_szTitle = L"regedit";
 HINSTANCE 	g_hInst = NULL;
+HANDLE	 	g_hProcessHeap = NULL;
 HWND 		g_hwndMain = NULL;
 HWND		g_hwndTreeView = NULL;
 HWND		g_hwndSplitter = NULL;
@@ -26,29 +25,29 @@ DWORD		g_dwSplitterPos = 0;
 BOOL		g_bDragging = FALSE;
 HCURSOR		g_hcResize = NULL;
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-LRESULT handle_create(HWND, UINT, WPARAM, LPARAM);
-void handle_resize(HWND hwnd);
-void DisplayErrorInMsgBox(LPCWSTR, DWORD);
-BOOL InitApplication(HINSTANCE);
-BOOL InitInstance(HINSTANCE, int);
-BOOL InitTreeViewItems(HWND hwndTV);
-HWND CreateTreeView(HWND hwndParent);
+HIMAGELIST CreateImageList();
 HWND CreateListView(HWND hwndParent);
 HWND CreateSplitter(HWND hwndParent);
-BOOL InitListViewColumns(HWND hwndLV);
-struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
+HWND CreateTreeView(HWND hwndParent);
+void DisplayErrorInMsgBox(LPCWSTR, DWORD);
+void FormatDwordForColumn(LPWSTR out, DWORD strlen, DWORD data);
 struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
-HIMAGELIST CreateImageList();
-void handle_treeview_selection(LPNMTREEVIEW selected);
-void handle_treeview_expand(LPNMTREEVIEW pnmtv);
+struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
+void HandleTreeViewExpand(LPNMTREEVIEW pnmtv);
+void HandleTreeViewSelection(LPNMTREEVIEW selected);
+LRESULT HandleWmCreate(HWND, UINT, WPARAM, LPARAM);
+void HandleWmSize(HWND hwnd);
+BOOL InitApplication(HINSTANCE);
+BOOL InitInstance(HINSTANCE, int);
+BOOL InitListViewColumns(HWND hwndLV);
+BOOL InitTreeViewItems(HWND hwndTV);
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 #ifdef UNDER_CE
-#define WINMAIN WinMain
+int WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
 #else
-#define WINMAIN wWinMain
+int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
 #endif
-int WINMAIN(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow) {
 	if(!InitApplication(hInstance)) {
 		MessageBox(0, L"RegisterClassW", L"Fail!", MB_ICONERROR);
 		return FALSE;
@@ -74,12 +73,12 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 
 	switch (pnmtv->hdr.code) {
 		case TVN_ITEMEXPANDING:
-			handle_treeview_expand(pnmtv);
+			HandleTreeViewExpand(pnmtv);
 			break;
 		case TVN_SELCHANGED:
 			// Key selection has changed, update the listview with the values
 			// for that key.
-			handle_treeview_selection(pnmtv);
+			HandleTreeViewSelection(pnmtv);
 			break;
 		case TVN_DELETEITEM:
 		{
@@ -98,7 +97,7 @@ LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	return 0;
 }
 
-void handle_treeview_expand(LPNMTREEVIEW pnmtv) {
+void HandleTreeViewExpand(LPNMTREEVIEW pnmtv) {
 	// 1. Get the item that's expanding
 	// 1. Delete all child items under it
 	// 1. Query the node's subkeys and create a new node for each one
@@ -182,49 +181,155 @@ void handle_treeview_expand(LPNMTREEVIEW pnmtv) {
 	return;
 }
 
-void handle_treeview_selection(LPNMTREEVIEW selected) {
+void HandleTreeViewSelection(LPNMTREEVIEW selected) {
 	LVITEM lvi;
-	RegNode *regnodeSelected;
+	RegNode *node;
 
-	LPWSTR lpszBlank		= L"REG_RESOURCELIST";
-	LPWSTR lpszKeyName		= L"keyName";
-	LPWSTR lpszFullPath		= L"fullpath";
+	LPWSTR lpszBlank		= L"";
 
 	// Get the RegNode for the selected item
-	regnodeSelected = (RegNode*) selected->itemNew.lParam;
+	node = (RegNode*) selected->itemNew.lParam;
 
 	// Clear the listview
 	ListView_DeleteAllItems(g_hwndListView);
 
-	// Add Debug items
+	// Make sure the reg handle is valid for the node
+	if(node->hkey == NULL) {
+		LONG ret;	
+		// Handle isn't open, so open it
+		ret = RegOpenKeyEx(
+			node->roothkey,		// Handle to predefined open key
+			node->fullpath,		// Name of the subkey to be opened
+			0,					// Options
+#ifdef UNDER_CE
+			0,					// Desired Access Rights (unused in CE)
+#else
+			KEY_READ,
+#endif
+			&(node->hkey)
+		);
+		
+		if(ret != ERROR_SUCCESS) {
+			DisplayErrorInMsgBox(L"RegOpenKeyEx", ret);
+			return;
+		}
+	}
 
+	// Enumerate all values and add them to the list-view
+	DWORD dwcValues;			// Number of values
+	DWORD dwcbMaxValueLen;		// largest value data length in bytes
+	DWORD dwchMaxValueNameLen;	// largest value name length in characters
+	//HKEY hkeySubKey;
+
+	RegQueryInfoKey(
+		node->hkey,				// Handle to open key
+		NULL,					// LPWSTR lpClass
+		NULL,					// LPDWORD lpcbClass
+		NULL,					// LPDWORD lpReserved
+		NULL,					// LPDWORD lpcSubKeys
+		NULL,					// LPDWORD lpcbMaxSubKeyLen
+		NULL,					// LPDWORD lpcbMaxClassLen
+		&dwcValues,				// LPDWORD lpcValues
+		&dwchMaxValueNameLen,	// LPDWORD lpcbMaxValueNameLen
+		&dwcbMaxValueLen,		// LPDWORD lpcbMaxValueLen
+		NULL,					// LPDWORD lpcbSecurityDescriptor   Unused in CE
+		NULL					// PFILETIME lpftLastWriteTime		Unused in CE
+	);
+
+	WCHAR szValueName[MAX_VALUE_NAME];
+	DWORD dwcchName;
+	DWORD dwType;
+	WCHAR lpszValueType[32];
+	WCHAR lpszValueData[MAX_DATA_LEN + 1];
+	BYTE bValueData[MAX_DATA_LEN];
+	DWORD dwcbData;
+	BOOL allocated;
+	LPWSTR lpszValueName;
 	int lvidx;
 
-		// First, keyName
-	lvi.mask = LVIF_TEXT;
-	lvi.pszText = lpszKeyName;
-	lvi.iItem = 0;
-	lvi.iSubItem = 0;
-	lvidx = ListView_InsertItem(g_hwndListView, &lvi);
+	// Check if value name is larger than our stack allocated buffer
+	if (dwchMaxValueNameLen > MAX_VALUE_NAME - 1) {
+		lpszValueName = (LPWSTR) HeapAlloc(g_hProcessHeap, 0, (dwchMaxValueNameLen + 1) * sizeof(WCHAR));
+		allocated = TRUE;
+	} else {
+		lpszValueName = szValueName;
+		allocated = FALSE;
+	}
 
-	// Item is created, now add column text
-	ListView_SetItemText(g_hwndListView, lvidx, 0, lpszKeyName);
-	ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
-	ListView_SetItemText(g_hwndListView, lvidx, 2, regnodeSelected->keyName);
+	while (dwcValues > 0) {
+		// Get the value's name, type, and data
+		dwcchName = allocated ? dwchMaxValueNameLen + 1 : MAX_DATA_LEN;
+		dwcbData = MAX_DATA_LEN;
+		RegEnumValue(node->hkey, --dwcValues, lpszValueName, &dwcchName, NULL, &dwType, bValueData, &dwcbData);
 
-		// Next, fullname
-	lvi.pszText = lpszFullPath;
-	lvi.iItem = 1;
-	lvi.iSubItem = 0;
-	lvidx = ListView_InsertItem(g_hwndListView, &lvi);
+		// Add it to the list-view
+		lvi.mask = LVIF_TEXT;
+		lvi.pszText = lpszValueName;
+		lvi.iItem = 0;
+		lvi.iSubItem = 0;
+		lvidx = ListView_InsertItem(g_hwndListView, &lvi);
 
-	// Item is created, now add column text
-	ListView_SetItemText(g_hwndListView, lvidx, 0, lpszFullPath);
-	ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
-	ListView_SetItemText(g_hwndListView, lvidx, 2, regnodeSelected->fullpath);
+		// Item is created, now add column text
+		// Name
+		if (wcscmp(lpszValueName, L"") == 0) {
+			// This is the "default" value
+			LoadString(g_hInst, IDS_DEFAULTVALNAME, lpszValueName, MAX_VALUE_NAME);
+			ListView_SetItemText(g_hwndListView, lvidx, 0, lpszValueName);
+		}
+		else {
+			ListView_SetItemText(g_hwndListView, lvidx, 0, lpszValueName);
+		}
+		
+		// Type
+		switch (dwType) {
+			case REG_NONE:
+			case REG_SZ:
+			case REG_EXPAND_SZ:
+			case REG_BINARY:
+			case REG_DWORD:
+			case REG_DWORD_BIG_ENDIAN:
+			case REG_LINK:
+			case REG_MULTI_SZ:
+			case REG_RESOURCE_LIST:
+				LoadString(g_hInst, IDS_REGNONE + dwType, lpszValueType, 32); // Get read-only pointer to type name string
+				ListView_SetItemText(g_hwndListView, lvidx, 1, lpszValueType);
+				break;
+			default:
+				ListView_SetItemText(g_hwndListView, lvidx, 1, lpszBlank);
+				break;
+		}
+
+		// Data
+		switch (dwType) {
+			case REG_BINARY:
+				LoadString(g_hInst, IDS_BINPLACEHLDR, lpszValueData, MAX_DATA_LEN);
+				ListView_SetItemText(g_hwndListView, lvidx, 2, lpszValueData);
+				break;
+			case REG_SZ:
+			case REG_EXPAND_SZ:
+				ListView_SetItemText(g_hwndListView, lvidx, 2, (LPWSTR) bValueData);	// Precarious cast retrieved registry data to string
+				break;
+			case REG_DWORD:
+				FormatDwordForColumn(lpszValueData, sizeof(lpszValueData), *((DWORD*) bValueData));
+				ListView_SetItemText(g_hwndListView, lvidx, 2, lpszValueData);
+				break;
+			default:
+				ListView_SetItemText(g_hwndListView, lvidx, 2, lpszBlank);
+				break;
+		}
+	}
+
+	if (allocated == TRUE) {
+		HeapFree(g_hProcessHeap, 0, (LPVOID) lpszValueName);
+	}
 
 	return;
 }
+
+void FormatDwordForColumn(LPWSTR lpszDst, DWORD dwcStrLen, DWORD dwData) {
+	_snwprintf(lpszDst, dwcStrLen, L"0x%08X (%d)", dwData, dwData);
+}
+
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static POINT ptPrev;
@@ -236,9 +341,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 			}
 			break;
 		case WM_CREATE:
-			return handle_create(hwnd, uMsg, wParam, lParam);
+			return HandleWmCreate(hwnd, uMsg, wParam, lParam);
 		case WM_SIZE:
-			handle_resize(hwnd);
+			HandleWmSize(hwnd);
 			break;
 		
 		// splitter bar
@@ -279,7 +384,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 				if (newSplitterPos > 20 && newSplitterPos < rcClient.right - 20) {
 					g_dwSplitterPos = newSplitterPos;
 					ptPrev = pt;
-					handle_resize(hwnd);
+					HandleWmSize(hwnd);
 				}
 			}
 			break;
@@ -308,7 +413,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 }
 
-LRESULT handle_create(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+LRESULT HandleWmCreate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	RECT rcClient;
 	GetClientRect(hwnd, &rcClient);
 	
@@ -342,18 +447,19 @@ HWND CreateListView(HWND hwndParent) {
 
 	lvs = GetListViewSize(g_dwSplitterPos, &rcClient);
 
-	lv = CreateWindow(
-			WC_LISTVIEW,
-			L"",
-			WS_VISIBLE | WS_CHILD | LVS_REPORT,
-			lvs.x,
-			lvs.y,
-			lvs.w,
-			lvs.h,
-			hwndParent,
-			(HMENU) IDC_LISTVIEW,
-			g_hInst,
-			NULL
+	lv = CreateWindowEx(
+		WS_EX_CLIENTEDGE,
+		WC_LISTVIEW,
+		L"",
+		WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SORTASCENDING | LVS_NOSORTHEADER,
+		lvs.x,
+		lvs.y,
+		lvs.w,
+		lvs.h,
+		hwndParent,
+		(HMENU) IDC_LISTVIEW,
+		g_hInst,
+		NULL
 	);
 
 	if (lv == NULL) {
@@ -419,7 +525,7 @@ HWND CreateTreeView(HWND hwndParent) {
 	}
 
 	tv = CreateWindowEx (
-			0,
+			WS_EX_CLIENTEDGE,
 			WC_TREEVIEW,
 			L"Tree View",
 			WS_VISIBLE | WS_CHILD | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS,
@@ -516,7 +622,7 @@ HWND CreateSplitter(HWND hwndParent) {
 	sb = CreateWindow(
 		L"STATIC",
 		NULL,
-		WS_CHILD | WS_BORDER | WS_VISIBLE | SS_LEFT,
+		WS_CHILD | WS_VISIBLE | SS_LEFT,
 		g_dwSplitterPos,
 		0,
 		SPLITTER_WIDTH,
@@ -553,7 +659,7 @@ struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient) {
 	return lvs;
 }
 
-void handle_resize(HWND hwnd) {
+void HandleWmSize(HWND hwnd) {
 	const int pad = CONTROL_PADDING;
 	RECT rcClient;
 	GetClientRect(hwnd, &rcClient);
@@ -667,6 +773,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 	);
 
 	if (!g_hwndMain) {
+		return FALSE;
+	}
+
+	g_hProcessHeap = GetProcessHeap();
+	if (!g_hProcessHeap) {
 		return FALSE;
 	}
 

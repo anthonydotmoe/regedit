@@ -29,6 +29,7 @@
 #define IDS_REGDESCRESLST   122
 
 #define IDS_BINPLACEHLDR    123
+#define IDS_DEFAULTVALNAME  124
 
 #define C_COLUMNS           3       // Number of listview columns
 #define IDS_COLFIRST        150
@@ -61,9 +62,10 @@
 #define IMID_REGKEY         2
 
 
+#define MAX_KEY_LENGTH      255
 #define MAX_KEY_NAME        128
 #define MAX_VALUE_NAME      128
 #define MAX_DATA_LEN        1024
 
-#define CONTROL_PADDING     4
-#define SPLITTER_WIDTH      10
+#define CONTROL_PADDING     0
+#define SPLITTER_WIDTH      3

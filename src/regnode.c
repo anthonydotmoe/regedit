@@ -51,7 +51,7 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
     // Add to TreeView
     TVINSERTSTRUCT tvis = {0};
     tvis.hParent = parent;
-    tvis.hInsertAfter = TVI_LAST;
+    tvis.hInsertAfter = TVI_SORT;
     tvis.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN;
     tvis.item.pszText = newNode->keyName;
     tvis.item.cChildren = 1;        // Node has one or more children
