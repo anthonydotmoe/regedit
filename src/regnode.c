@@ -15,6 +15,7 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
     // Copy the full path of the parent key to the newNode's full path
     if(parent == TVI_ROOT) {
         // This is the psuedo root key
+        newNode->roothkey = NULL;
         wcsncpy(newNode->fullpath, L"", MAX_PATH);
     }
     else if(hKey == HKEY_CLASSES_ROOT || hKey == HKEY_CURRENT_USER || hKey == HKEY_LOCAL_MACHINE || hKey == HKEY_USERS) {

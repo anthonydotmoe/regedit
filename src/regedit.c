@@ -193,6 +193,11 @@ void HandleTreeViewSelection(LPNMTREEVIEW selected) {
 	// Clear the listview
 	ListView_DeleteAllItems(g_hwndListView);
 
+	if(node->roothkey == NULL) {
+		// This is the fake root node, exit
+		return;
+	}
+
 	// Make sure the reg handle is valid for the node
 	if(node->hkey == NULL) {
 		LONG ret;	
