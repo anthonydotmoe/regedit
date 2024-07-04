@@ -49,6 +49,8 @@
 
 #define IDC_LISTVIEW        501
 
+#define IDC_COMMANDBAR      701
+
 // String value icon
 #define IDI_REGSZ           601
 #define IMID_REGSZ          0

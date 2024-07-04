@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include "regedit.h"
 #include "regnode.h"
+#include <sipapi.h>
 
 struct WindowSize {
 	int x;
@@ -21,9 +22,11 @@ HWND 		g_hwndMain = NULL;
 HWND		g_hwndTreeView = NULL;
 HWND		g_hwndSplitter = NULL;
 HWND		g_hwndListView = NULL;
+HWND		g_hwndCommandBar = NULL;
 DWORD		g_dwSplitterPos = 0;
 BOOL		g_bDragging = FALSE;
 HCURSOR		g_hcResize = NULL;
+int             g_iCommandBarHeight = 0;
 
 HIMAGELIST CreateImageList();
 HWND CreateListView(HWND hwndParent);
@@ -57,6 +60,8 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int
 		MessageBox(0, L"InitInstance", L"Fail!", MB_ICONERROR);
 		return FALSE;
 	}
+
+	//SipShowIM(SIPF_ON);
 
 	// Message loop
 	MSG msg;
@@ -322,6 +327,21 @@ void HandleTreeViewSelection(LPNMTREEVIEW selected) {
 				ListView_SetItemText(g_hwndListView, lvidx, 2, lpszBlank);
 				break;
 		}
+
+		// Icon
+		lvi.iItem = lvidx;
+		lvi.iSubItem = 0;
+		lvi.mask = LVIF_IMAGE;
+		switch (dwType) {
+			case REG_SZ:
+			case REG_EXPAND_SZ:
+			case REG_MULTI_SZ:
+				lvi.iImage = 0;
+				break;
+			default:
+				lvi.iImage = 1;
+		}
+		ListView_SetItem(g_hwndListView, &lvi);
 	}
 
 	if (allocated == TRUE) {
@@ -424,6 +444,13 @@ LRESULT HandleWmCreate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	
 	g_dwSplitterPos = rcClient.right / 3;
 
+	if (NULL == (g_hwndCommandBar = CommandBar_Create(g_hInst, hwnd, IDC_COMMANDBAR))) {
+		DisplayErrorInMsgBox(L"CommandBar_Create", E_FAIL);
+	} else {
+		CommandBar_InsertMenubarEx(g_hwndCommandBar, g_hInst, MAKEINTRESOURCE(IDM_MENUBAR), 0);
+		g_iCommandBarHeight = CommandBar_Height(g_hwndCommandBar);
+	}
+
 	if (NULL == (g_hwndTreeView = CreateTreeView(hwnd))) {
 		DisplayErrorInMsgBox(L"CreateTreeView", E_FAIL);
 		return -1;
@@ -443,8 +470,9 @@ LRESULT HandleWmCreate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 HWND CreateListView(HWND hwndParent) {
-	RECT rcClient;
+	HIMAGELIST il;
 	HWND lv;
+	RECT rcClient;
 
 	GetClientRect(hwndParent, &rcClient);
 
@@ -474,6 +502,17 @@ HWND CreateListView(HWND hwndParent) {
 	if (!InitListViewColumns(lv)) {
 		return NULL;
 	}
+
+	// Initialize the imagelist
+	il = CreateImageList();
+
+	if (il == NULL) {
+		// Fail
+		DisplayErrorInMsgBox(L"CreateImageList", E_FAIL);
+		return NULL;
+	}
+
+	ListView_SetImageList(lv, il, LVSIL_SMALL);
 
 	return lv;
 }
@@ -511,23 +550,13 @@ BOOL InitListViewColumns(HWND hwndLV) {
 
 
 HWND CreateTreeView(HWND hwndParent) {
-	RECT rcClient;
-	HIMAGELIST il;
 	HWND tv;
+	RECT rcClient;
 
 	GetClientRect(hwndParent, &rcClient);
 
 	struct WindowSize tvs;
 	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
-
-	// Initialize the imagelist
-	il = CreateImageList();
-
-	if (il == NULL) {
-		// Fail
-		DisplayErrorInMsgBox(L"CreateImageList", E_FAIL);
-		return NULL;
-	}
 
 	tv = CreateWindowEx (
 			WS_EX_CLIENTEDGE,
@@ -569,7 +598,7 @@ HIMAGELIST CreateImageList() {
 	// Create the imagelist
 	il = ImageList_Create(
 		16, 16,			// image size
-		ILC_COLOR,		// flags
+		ILC_COLOR | ILC_MASK,		// flags
 		3,				// number of icons
 		0				// extra icon slots
 	);
@@ -607,7 +636,7 @@ HIMAGELIST CreateImageList() {
 		DeleteObject(icon);
 
 		if (ret == -1) {
-			DisplayErrorInMsgBox(L"ImageList_AddMasked", E_FAIL);
+			DisplayErrorInMsgBox(L"ImageList_AddIcon", E_FAIL);
 			ImageList_Destroy(il);
 			return NULL;
 		}
@@ -645,9 +674,10 @@ struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient) {
 	struct WindowSize tvs;
 	const int pad = CONTROL_PADDING;
 	
-	tvs.x = tvs.y = pad;
+	tvs.x = pad;
+	tvs.y = pad + g_iCommandBarHeight;
 	tvs.w = dwSplitterPos - pad;
-	tvs.h = rcClient->bottom - 2 * pad;
+	tvs.h = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
 	
 	return tvs;
 }
@@ -657,9 +687,9 @@ struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient) {
 	const int pad = CONTROL_PADDING;
 	
 	lvs.x = dwSplitterPos + SPLITTER_WIDTH;
-	lvs.y = pad;
+	lvs.y = pad + g_iCommandBarHeight;
 	lvs.w = rcClient->right - lvs.x - pad;
-	lvs.h = rcClient->bottom - 2 * pad;
+	lvs.h = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
 	
 	return lvs;
 }
@@ -729,7 +759,7 @@ BOOL InitApplication(HINSTANCE hInstance) {
 	// Init common controls
 	INITCOMMONCONTROLSEX iccex;
 	iccex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-	iccex.dwICC = ICC_TREEVIEW_CLASSES | ICC_LISTVIEW_CLASSES;
+	iccex.dwICC = ICC_TREEVIEW_CLASSES | ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES;
 	if (!InitCommonControlsEx(&iccex)) {
 		MessageBox(0, L"Couldn't init common controls", L"Error", MB_ICONERROR);
 		return FALSE;
@@ -763,7 +793,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 	g_hInst = hInstance;
 
 	g_hwndMain = CreateWindowEx(
-			0,				// Optional window styles
+			0x40000000L,				// Optional window styles
 			g_szClassName,			// Window class
 			g_szTitle,			// Window text
 			WS_OVERLAPPEDWINDOW,			// Window style
@@ -788,6 +818,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 
 	// Show the window
 	ShowWindow(g_hwndMain, nCmdShow);
+	ShowWindow(g_hwndMain, SW_SHOWMAXIMIZED);
 	UpdateWindow(g_hwndMain);
+
 	return TRUE;
 }
