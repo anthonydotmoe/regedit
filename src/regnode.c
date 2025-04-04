@@ -53,8 +53,10 @@ RegNode* regnode_Create(HKEY hKey, LPCWSTR keyName, HWND hwndTV, HTREEITEM paren
     TVINSERTSTRUCT tvis = {0};
     tvis.hParent = parent;
     tvis.hInsertAfter = TVI_SORT;
-    tvis.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_CHILDREN;
+    tvis.item.mask = TVIF_TEXT | TVIF_IMAGE | TVIF_SELECTEDIMAGE | TVIF_PARAM | TVIF_CHILDREN;
     tvis.item.pszText = newNode->keyName;
+    tvis.item.iImage = 2;
+    tvis.item.iSelectedImage = 2;
     tvis.item.cChildren = 1;        // Node has one or more children
     tvis.item.lParam = (LPARAM)newNode;
     

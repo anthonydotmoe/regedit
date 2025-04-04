@@ -5,14 +5,10 @@
 #include <stdio.h>
 #include "regedit.h"
 #include "regnode.h"
-#include <sipapi.h>
 
-struct WindowSize {
-	int x;
-	int y;
-	int w;
-	int h;
-};
+#ifdef UNDER_CE
+#include <sipapi.h>
+#endif
 
 LPCTSTR		g_szClassName = L"Main window class";
 LPCTSTR		g_szTitle = L"regedit";
@@ -26,7 +22,8 @@ HWND		g_hwndCommandBar = NULL;
 DWORD		g_dwSplitterPos = 0;
 BOOL		g_bDragging = FALSE;
 HCURSOR		g_hcResize = NULL;
-int             g_iCommandBarHeight = 0;
+HIMAGELIST	g_hImageList = NULL;
+int         g_iCommandBarHeight = 0;
 
 HIMAGELIST CreateImageList();
 HWND CreateListView(HWND hwndParent);
@@ -34,8 +31,8 @@ HWND CreateSplitter(HWND hwndParent);
 HWND CreateTreeView(HWND hwndParent);
 void DisplayErrorInMsgBox(LPCWSTR, DWORD);
 void FormatDwordForColumn(LPWSTR out, DWORD strlen, DWORD data);
-struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
-struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
+RECT GetListViewSize(DWORD dwSplitterPos, RECT *rcClient);
+RECT GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient);
 void HandleTreeViewExpand(LPNMTREEVIEW pnmtv);
 void HandleTreeViewSelection(LPNMTREEVIEW selected);
 LRESULT HandleWmCreate(HWND, UINT, WPARAM, LPARAM);
@@ -69,12 +66,75 @@ int wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 	}
+
 	return 0;
 }
 
-LRESULT handle_treeview_notify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+void DisplayContextMenu(HWND hWnd, POINT pt) {
+	HMENU hMenu;
+	HMENU hMenuTrackPopup;
+
+	// Load the menu resource
+	if ((hMenu = LoadMenu(g_hInst, MAKEINTRESOURCE(IDM_KEYCTX))) == NULL)
+		return;
+	
+	// Get the first menu from the resource
+	hMenuTrackPopup = GetSubMenu(hMenu, 0);
+
+	SetMenuDefaultItem(hMenuTrackPopup, IDM_KEYMODIFY, FALSE);
+
+	// Display the shortcut menu. Track the right mouse button.
+	TrackPopupMenu(hMenuTrackPopup,
+		TPM_LEFTALIGN | TPM_RIGHTBUTTON,
+		pt.x, pt.y, 0, hWnd, NULL
+	);
+
+	// Destroy the menu
+	DestroyMenu(hMenu);
+}
+
+void HandleListViewRightClick(LPNMITEMACTIVATE pnmitem) {
+	return;
+	if (pnmitem->iItem != -1) {
+		// Create a popup menu
+		POINT p;
+		GetCursorPos(&p);
+		DisplayContextMenu(g_hwndMain, p);
+	}
+}
+
+#define GET_X_LPARAM(lp)	((int)(short)LOWORD(lp))
+#define GET_Y_LPARAM(lp)	((int)(short)HIWORD(lp))
+
+LRESULT HandleWmContextMenu(HWND hwnd, WPARAM wParam, LPARAM lParam) {
+	// Get mouse position
+	POINT p;
+	p.x = GET_X_LPARAM(lParam);
+	p.y = GET_Y_LPARAM(lParam);
+
+	if (p.x == -1 && p.y == -1) {
+		// The context menu was spawned by button.
+	}
+
+	DisplayContextMenu(g_hwndMain, p);
+}
+
+LRESULT HandleListViewNotify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
+	LPNMITEMACTIVATE pnmitem = (LPNMITEMACTIVATE)lParam;
+	
+	switch (pnmitem->hdr.code) {
+		case NM_RCLICK:
+			HandleListViewRightClick(pnmitem);
+			break;
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+LRESULT HandleTreeViewNotify(HWND hWnd, WPARAM wParam, LPARAM lParam) {
 	LPNMTREEVIEW pnmtv = (LPNMTREEVIEW)lParam;
-	static int useless = 0;
 
 	switch (pnmtv->hdr.code) {
 		case TVN_ITEMEXPANDING:
@@ -171,6 +231,10 @@ void HandleTreeViewExpand(LPNMTREEVIEW pnmtv) {
 		NULL,				// LPDWORD lpcbSecurityDescriptor   Unused in CE
 		NULL				// PFILETIME lpftLastWriteTime		Unused in CE
 	);
+
+	pnmtv->itemNew.cChildren = dwcSubKeys;
+	pnmtv->itemNew.mask = TVIF_CHILDREN;
+	TreeView_SetItem(g_hwndTreeView, &pnmtv->itemNew);
 	
 	// Enumerate subkeys
 	WCHAR lpszSubKeyName[MAX_KEY_NAME];
@@ -355,6 +419,12 @@ void FormatDwordForColumn(LPWSTR lpszDst, DWORD dwcStrLen, DWORD dwData) {
 	_snwprintf(lpszDst, dwcStrLen, L"0x%08X (%d)", dwData, dwData);
 }
 
+LRESULT HandleWmCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
+	if ((HIWORD(wParam) == 0) && (LOWORD(wParam) == IDM_KEYMODIFY)) {
+		MessageBox(NULL, L"You selected Modify", L"You selected Modify", 0);
+	}
+	return 0;
+}
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	static POINT ptPrev;
@@ -362,13 +432,22 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	switch (uMsg) {
 		case WM_NOTIFY:
 			if (((LPNMHDR)lParam)->idFrom == IDC_TREEVIEW) {
-				return handle_treeview_notify(hwnd, wParam, lParam);
+				return HandleTreeViewNotify(hwnd, wParam, lParam);
+			}
+			if (((LPNMHDR)lParam)->idFrom == IDC_LISTVIEW) {
+				return HandleListViewNotify(hwnd, wParam, lParam);
 			}
 			break;
 		case WM_CREATE:
 			return HandleWmCreate(hwnd, uMsg, wParam, lParam);
 		case WM_SIZE:
 			HandleWmSize(hwnd);
+			break;
+		case WM_COMMAND:
+			return HandleWmCommand(hwnd, wParam, lParam);
+			break;
+		case WM_CONTEXTMENU:
+			return HandleWmContextMenu(hwnd, wParam, lParam);
 			break;
 		
 		// splitter bar
@@ -429,6 +508,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 
 			PostQuitMessage(0);
 			break;
+		case WM_DPICHANGED:
+			DebugBreak();
+			break;
 		default:
 			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 
@@ -444,11 +526,17 @@ LRESULT HandleWmCreate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 	
 	g_dwSplitterPos = rcClient.right / 3;
 
+#ifdef UNDER_CE
 	if (NULL == (g_hwndCommandBar = CommandBar_Create(g_hInst, hwnd, IDC_COMMANDBAR))) {
 		DisplayErrorInMsgBox(L"CommandBar_Create", E_FAIL);
 	} else {
 		CommandBar_InsertMenubarEx(g_hwndCommandBar, g_hInst, MAKEINTRESOURCE(IDM_MENUBAR), 0);
 		g_iCommandBarHeight = CommandBar_Height(g_hwndCommandBar);
+	}
+#endif
+	if (NULL == (g_hImageList = CreateImageList())) {
+		DisplayErrorInMsgBox(L"CreateImageList", E_FAIL);
+		return -1;
 	}
 
 	if (NULL == (g_hwndTreeView = CreateTreeView(hwnd))) {
@@ -470,13 +558,12 @@ LRESULT HandleWmCreate(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
 }
 
 HWND CreateListView(HWND hwndParent) {
-	HIMAGELIST il;
 	HWND lv;
 	RECT rcClient;
 
 	GetClientRect(hwndParent, &rcClient);
 
-	struct WindowSize lvs;
+	RECT lvs;
 
 	lvs = GetListViewSize(g_dwSplitterPos, &rcClient);
 
@@ -485,10 +572,10 @@ HWND CreateListView(HWND hwndParent) {
 		WC_LISTVIEW,
 		L"",
 		WS_VISIBLE | WS_CHILD | LVS_REPORT | LVS_SORTASCENDING | LVS_NOSORTHEADER,
-		lvs.x,
-		lvs.y,
-		lvs.w,
-		lvs.h,
+		lvs.right,
+		lvs.top,
+		lvs.right - lvs.left,
+		lvs.bottom - lvs.top,
 		hwndParent,
 		(HMENU) IDC_LISTVIEW,
 		g_hInst,
@@ -503,16 +590,7 @@ HWND CreateListView(HWND hwndParent) {
 		return NULL;
 	}
 
-	// Initialize the imagelist
-	il = CreateImageList();
-
-	if (il == NULL) {
-		// Fail
-		DisplayErrorInMsgBox(L"CreateImageList", E_FAIL);
-		return NULL;
-	}
-
-	ListView_SetImageList(lv, il, LVSIL_SMALL);
+	ListView_SetImageList(lv, g_hImageList, LVSIL_SMALL);
 
 	return lv;
 }
@@ -548,14 +626,13 @@ BOOL InitListViewColumns(HWND hwndLV) {
 	return TRUE;
 }
 
-
 HWND CreateTreeView(HWND hwndParent) {
 	HWND tv;
 	RECT rcClient;
 
 	GetClientRect(hwndParent, &rcClient);
 
-	struct WindowSize tvs;
+	RECT tvs;
 	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
 
 	tv = CreateWindowEx (
@@ -563,10 +640,10 @@ HWND CreateTreeView(HWND hwndParent) {
 			WC_TREEVIEW,
 			L"Tree View",
 			WS_VISIBLE | WS_CHILD | TVS_HASLINES | TVS_LINESATROOT | TVS_HASBUTTONS,
-			tvs.x,
-			tvs.y,
-			tvs.w,
-			tvs.h,
+			tvs.left,
+			tvs.top,
+			tvs.right - tvs.left,
+			tvs.bottom - tvs.top,
 			hwndParent,
 			(HMENU) IDC_TREEVIEW,
 			g_hInst,
@@ -578,16 +655,11 @@ HWND CreateTreeView(HWND hwndParent) {
 		return NULL;
 	}
 
-	/*
-	if(NULL == TreeView_SetImageList(tv, il, TVSIL_NORMAL)) {
-		DisplayErrorInMsgBox(L"TreeView_SetImageList", E_FAIL);
-		return NULL;
-	}
-	*/
-
 	if (!InitTreeViewItems(tv)) {
 		return NULL;
 	}
+
+	TreeView_SetImageList(tv, g_hImageList, TVSIL_NORMAL);
 
 	return tv;
 }
@@ -598,7 +670,7 @@ HIMAGELIST CreateImageList() {
 	// Create the imagelist
 	il = ImageList_Create(
 		16, 16,			// image size
-		ILC_COLOR | ILC_MASK,		// flags
+		ILC_COLORDDB | ILC_MASK,		// flags
 		3,				// number of icons
 		0				// extra icon slots
 	);
@@ -670,27 +742,27 @@ HWND CreateSplitter(HWND hwndParent) {
 	return sb;
 }
 
-struct WindowSize GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient) {
-	struct WindowSize tvs;
+RECT GetTreeViewSize(DWORD dwSplitterPos, RECT *rcClient) {
+	RECT tvs;
 	const int pad = CONTROL_PADDING;
 	
-	tvs.x = pad;
-	tvs.y = pad + g_iCommandBarHeight;
-	tvs.w = dwSplitterPos - pad;
-	tvs.h = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
+	tvs.left = pad;
+	tvs.top = pad + g_iCommandBarHeight;
+	tvs.right = dwSplitterPos - pad;
+	tvs.bottom = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
 	
 	return tvs;
 }
 
-struct WindowSize GetListViewSize(DWORD dwSplitterPos, RECT *rcClient) {
-	struct WindowSize lvs;
+RECT GetListViewSize(DWORD dwSplitterPos, RECT *rcClient) {
+	RECT lvs;
 	const int pad = CONTROL_PADDING;
-	
-	lvs.x = dwSplitterPos + SPLITTER_WIDTH;
-	lvs.y = pad + g_iCommandBarHeight;
-	lvs.w = rcClient->right - lvs.x - pad;
-	lvs.h = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
-	
+
+	lvs.left = dwSplitterPos + SPLITTER_WIDTH;
+	lvs.top = pad + g_iCommandBarHeight;
+	lvs.right = rcClient->right - pad;
+	lvs.bottom = rcClient->bottom - 2 * pad - g_iCommandBarHeight;
+
 	return lvs;
 }
 
@@ -699,7 +771,8 @@ void HandleWmSize(HWND hwnd) {
 	RECT rcClient;
 	GetClientRect(hwnd, &rcClient);
 	
-	struct WindowSize lvs, tvs;
+	RECT tvs;
+	RECT lvs;
 	int sb_x, sb_y, sb_w, sb_h;
 
 	sb_x = g_dwSplitterPos;
@@ -710,9 +783,9 @@ void HandleWmSize(HWND hwnd) {
 	lvs = GetListViewSize(g_dwSplitterPos, &rcClient);
 	tvs = GetTreeViewSize(g_dwSplitterPos, &rcClient);
 
-	MoveWindow(g_hwndTreeView, tvs.x, tvs.y, tvs.w, tvs.h, TRUE);
+ 	SetWindowPos(g_hwndTreeView, NULL, tvs.left, tvs.top, tvs.right - tvs.left, tvs.bottom - tvs.top, SWP_NOZORDER | SWP_NOACTIVATE);
 	MoveWindow(g_hwndSplitter, sb_x, sb_y, sb_w, sb_h, TRUE);
-	MoveWindow(g_hwndListView, lvs.x, lvs.y, lvs.w, lvs.h, TRUE);
+ 	SetWindowPos(g_hwndListView, NULL, lvs.left, lvs.top, lvs.right - lvs.left, lvs.bottom - lvs.top, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 BOOL InitTreeViewItems(HWND hwndTV) {
@@ -730,7 +803,6 @@ BOOL InitTreeViewItems(HWND hwndTV) {
 
 	return TRUE;
 }
-
 
 void DisplayErrorInMsgBox(LPCWSTR lpszTitle, DWORD dwErr) {
 	WCHAR wszMsgBuff[512];		// Buffer for text
@@ -791,9 +863,14 @@ BOOL InitApplication(HINSTANCE hInstance) {
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow) {
 
 	g_hInst = hInstance;
+#ifdef UNDER_CE
+	const DWORD dwExStyle = 0x40000000;
+#else
+	const DWORD dwExStyle = 0;
+#endif
 
 	g_hwndMain = CreateWindowEx(
-			0x40000000L,				// Optional window styles
+			dwExStyle,				// Optional window styles
 			g_szClassName,			// Window class
 			g_szTitle,			// Window text
 			WS_OVERLAPPEDWINDOW,			// Window style

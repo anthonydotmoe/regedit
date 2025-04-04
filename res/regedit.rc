@@ -1,6 +1,8 @@
 #include <windows.h>
 #include "regedit.h"
 
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "application.manifest"
+
 IDI_ICON ICON "regedit.ico"
 
 IDM_MENUBAR MENU
@@ -15,6 +17,18 @@ LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
     MENUITEM "Add &Key...",     IDM_EDADDKEY
     MENUITEM "Add &Value...",   IDM_EDADDVAL
     MENUITEM "&Delete\tDel",    IDM_EDDELETE
+  }
+}
+
+IDM_KEYCTX MENU
+{
+  POPUP ""
+  {
+    MENUITEM "&Modify...",      IDM_KEYMODIFY
+    MENUITEM "Modify &Binary Data...", IDM_KEYMODIFYBIN
+    MENUITEM SEPARATOR
+    MENUITEM "&Delete",         IDM_KEYDELETE
+    MENUITEM "&Rename",         IDM_KEYRENAME
   }
 }
 

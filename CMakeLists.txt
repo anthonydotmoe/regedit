@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.15)
 
 project(regedit LANGUAGES C)
 
@@ -13,9 +13,15 @@ set(RESOURCE_FILE ${RESOURCE_DIR}/regedit.rc)
 # Find all the C source files in the source directory
 file(GLOB SOURCE_FILES ${SOURCE_DIR}/*.c)
 
+# Disable generation and inclusion of default manifest
+SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /MANIFEST:NO")
+SET(CMAKE_MODULE_LINKER_FLAGS  "${CMAKE_MODULE_LINKER_FLAGS} /MANIFEST:NO")
+SET(CMAKE_SHARED_LINKER_FLAGS  "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO")
+
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 # Add the executable
 add_executable(${EXECUTABLE_NAME} WIN32 ${SOURCE_FILES} ${RESOURCE_FILE})
-
 # Specify the include directories
 target_include_directories(${EXECUTABLE_NAME} PRIVATE ${INCLUDE_DIR})
 
@@ -24,4 +30,4 @@ target_link_libraries(${EXECUTABLE_NAME} PRIVATE advapi32 comctl32)
 
 # Enable Unicode and disable deprecation warnings, the unsafe string functions
 # are unfortunately needed to support Windows CE 5.0
-target_compile_definitions(${EXECUTABLE_NAME} PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(${EXECUTABLE_NAME} PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS) 

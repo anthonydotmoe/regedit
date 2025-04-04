@@ -43,6 +43,12 @@
 #define IDM_EDADDVAL        204
 #define IDM_EDDELETE        205
 
+#define IDM_KEYCTX          206
+#define IDM_KEYMODIFY       207
+#define IDM_KEYMODIFYBIN    208
+#define IDM_KEYDELETE       209
+#define IDM_KEYRENAME       210
+
 #define IDC_TREEVIEW        301
 
 #define IDC_SPLITTER        401
